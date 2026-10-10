@@ -5,10 +5,14 @@ import dns from 'dns'
 try {
   dns.setServers(['8.8.8.8', '1.1.1.1'])
 } catch (e) {
-  console.warn('[DNS Warning]:', e.message)
+  // Ignore in serverless environments where custom DNS servers may be restricted
 }
 
 const connectDB = async () => {
+  if (mongoose.connection.readyState >= 1) {
+    return
+  }
+
   try {
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 10000,

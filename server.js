@@ -31,6 +31,12 @@ app.use(
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
+// Ensure DB connection for each incoming serverless request
+app.use(async (req, res, next) => {
+  await connectDB()
+  next()
+})
+
 // Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
@@ -40,6 +46,14 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     app: 'Jesus In Africa API',
     time: new Date().toISOString(),
+  })
+})
+
+// Root welcome route
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Jesus In Africa Backend API is live!',
   })
 })
 
@@ -63,10 +77,15 @@ app.use((err, req, res, next) => {
   })
 })
 
-const PORT = process.env.PORT || 5000
-app.listen(PORT, () => {
-  console.log(`===============================================`)
-  console.log(`🚀 JIA Backend API Server running on port ${PORT}`)
-  console.log(`📡 URL: http://localhost:${PORT}`)
-  console.log(`===============================================`)
-})
+// Only listen on port when running standalone (not in Vercel serverless)
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 5000
+  app.listen(PORT, () => {
+    console.log(`===============================================`)
+    console.log(`🚀 JIA Backend API Server running on port ${PORT}`)
+    console.log(`📡 URL: http://localhost:${PORT}`)
+    console.log(`===============================================`)
+  })
+}
+
+export default app
