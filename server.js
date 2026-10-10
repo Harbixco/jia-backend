@@ -3,6 +3,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import mongoose from 'mongoose'
 import connectDB from './config/db.js'
 
 import authRoutes from './routes/authRoutes.js'
@@ -19,7 +20,7 @@ const __dirname = path.dirname(__filename)
 const app = express()
 
 // Connect to MongoDB
-connectDB()
+connectDB().catch((err) => console.error('[Initial DB Connect]:', err.message))
 
 // Middleware
 app.use(
@@ -33,8 +34,15 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Ensure DB connection for each incoming serverless request
 app.use(async (req, res, next) => {
-  await connectDB()
-  next()
+  try {
+    await connectDB()
+    next()
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: `Database Connection Failed: ${err.message}`,
+    })
+  }
 })
 
 // Serve static uploads
@@ -45,8 +53,39 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     app: 'Jesus In Africa API',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     time: new Date().toISOString(),
   })
+})
+
+// DB Diagnostic Endpoint
+app.get('/api/test-db', async (req, res) => {
+  try {
+    const uri = process.env.MONGODB_URI
+    if (!uri) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'MONGODB_URI environment variable is missing on Vercel!',
+      })
+    }
+    const masked = uri.replace(/:([^@]+)@/, ':****@')
+    await connectDB()
+    return res.json({
+      status: 'success',
+      readyState: mongoose.connection.readyState,
+      host: mongoose.connection.host || 'unknown',
+      uri: masked,
+    })
+  } catch (err) {
+    return res.status(500).json({
+      status: 'error',
+      message: err.message,
+      name: err.name,
+      uri: process.env.MONGODB_URI
+        ? process.env.MONGODB_URI.replace(/:([^@]+)@/, ':****@')
+        : 'undefined',
+    })
+  }
 })
 
 // Root welcome route
