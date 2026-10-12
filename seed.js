@@ -127,7 +127,7 @@ const seedData = async () => {
       await Admin.create({
         name: 'JIA Lead Admin',
         email: adminEmail,
-        password: process.env.ADMIN_PASSWORD || 'admin123',
+        password: process.env.ADMIN_PASSWORD || '@Laura24$',
         role: 'superadmin',
       })
       console.log(`[Seeding]: Admin created (${adminEmail})`)

@@ -23,7 +23,7 @@ export const loginAdmin = async (req, res) => {
     const adminCount = await Admin.countDocuments()
     if (adminCount === 0) {
       const defaultEmail = process.env.ADMIN_EMAIL || 'admin@jesusinafrica.org'
-      const defaultPassword = process.env.ADMIN_PASSWORD || 'admin123'
+      const defaultPassword = process.env.ADMIN_PASSWORD || '@Laura24$'
       await Admin.create({
         name: 'JIA Lead Admin',
         email: defaultEmail,
