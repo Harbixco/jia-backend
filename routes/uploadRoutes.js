@@ -2,29 +2,36 @@ import express from 'express'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
+import { v2 as cloudinary } from 'cloudinary'
 import { protectAdmin } from '../middleware/auth.js'
 
 const router = express.Router()
 
-// Ensure uploads directory exists
-const uploadDir = path.resolve('uploads')
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true })
+// Check if Cloudinary credentials are provided
+const isCloudinaryConfigured = () => {
+  return Boolean(
+    (process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET) ||
+      process.env.CLOUDINARY_URL
+  )
 }
 
-const storage = multer.diskStorage({
-  destination(req, file, cb) {
-    cb(null, uploadDir)
-  },
-  filename(req, file, cb) {
-    const ext = path.extname(file.originalname)
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`
-    cb(null, `img-${uniqueSuffix}${ext}`)
-  },
-})
+// Initialize Cloudinary config
+if (isCloudinaryConfigured()) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true,
+  })
+}
+
+// Use Memory Storage for Serverless environments (no read-only disk issues)
+const storage = multer.memoryStorage()
 
 const fileFilter = (req, file, cb) => {
-  const allowed = /jpeg|jpg|png|webp|gif|svg/
+  const allowed = /jpeg|jpg|png|webp|gif|svg/i
   const ext = allowed.test(path.extname(file.originalname).toLowerCase())
   const mime = allowed.test(file.mimetype)
 
@@ -36,25 +43,107 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter,
 })
 
-router.post('/', protectAdmin, upload.single('image'), (req, res) => {
+// Helper to stream upload buffer to Cloudinary
+const streamUploadToCloudinary = (buffer, originalname) => {
+  return new Promise((resolve, reject) => {
+    // Clean original filename for public id
+    const cleanName = path
+      .basename(originalname, path.extname(originalname))
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .slice(0, 40)
+
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: 'jesusinafrica/posts',
+        public_id: `${cleanName}_${Date.now()}`,
+        resource_type: 'image',
+        transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+      },
+      (error, result) => {
+        if (error) return reject(error)
+        resolve(result)
+      }
+    )
+    uploadStream.end(buffer)
+  })
+}
+
+// GET /api/upload/status - Diagnostic check for upload service
+router.get('/status', (req, res) => {
+  res.json({
+    configured: isCloudinaryConfigured(),
+    service: isCloudinaryConfigured() ? 'Cloudinary CDN' : 'Local Fallback',
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME ? 'Configured' : 'Missing',
+  })
+})
+
+// POST /api/upload - Upload single image
+router.post('/', protectAdmin, upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No file uploaded' })
   }
 
-  // Construct accessible URL
-  const serverUrl = `${req.protocol}://${req.get('host')}`
-  const fileUrl = `${serverUrl}/uploads/${req.file.filename}`
+  try {
+    // 1. If Cloudinary is configured, upload to Cloudinary CDN
+    if (isCloudinaryConfigured()) {
+      const result = await streamUploadToCloudinary(
+        req.file.buffer,
+        req.file.originalname
+      )
 
-  return res.json({
-    success: true,
-    message: 'File uploaded successfully',
-    url: fileUrl,
-    filename: req.file.filename,
-  })
+      return res.json({
+        success: true,
+        message: 'Image uploaded to Cloudinary CDN successfully',
+        url: result.secure_url,
+        public_id: result.public_id,
+        format: result.format,
+        width: result.width,
+        height: result.height,
+      })
+    }
+
+    // 2. If running on Vercel and Cloudinary is not configured, inform the user clearly
+    if (process.env.VERCEL) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Cloudinary is not yet configured on Vercel. Please add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in your Vercel Project Environment Variables.',
+      })
+    }
+
+    // 3. Local Development Fallback: Save to local ./uploads directory
+    const uploadDir = path.resolve('uploads')
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true })
+    }
+
+    const ext = path.extname(req.file.originalname)
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`
+    const filename = `img-${uniqueSuffix}${ext}`
+    const filepath = path.join(uploadDir, filename)
+
+    fs.writeFileSync(filepath, req.file.buffer)
+
+    const serverUrl = `${req.protocol}://${req.get('host')}`
+    const fileUrl = `${serverUrl}/uploads/${filename}`
+
+    return res.json({
+      success: true,
+      message: 'File uploaded locally (development mode)',
+      url: fileUrl,
+      filename,
+    })
+  } catch (error) {
+    console.error('[Upload Error]:', error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Image upload failed',
+    })
+  }
 })
 
 export default router
