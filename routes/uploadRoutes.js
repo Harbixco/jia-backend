@@ -61,7 +61,11 @@ const streamUploadToCloudinary = (buffer, originalname) => {
         folder: 'jesusinafrica/posts',
         public_id: `${cleanName}_${Date.now()}`,
         resource_type: 'image',
-        transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+        transformation: [
+          { width: 1600, height: 1200, crop: 'limit' },
+          { quality: 'auto:good' },
+          { fetch_format: 'auto' },
+        ],
       },
       (error, result) => {
         if (error) return reject(error)
