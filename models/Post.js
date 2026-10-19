@@ -37,6 +37,12 @@ const postSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    gallery: [
+      {
+        src: { type: String, default: '' },
+        caption: { type: String, default: '' },
+      },
+    ],
     category: {
       type: String,
       default: 'Article',

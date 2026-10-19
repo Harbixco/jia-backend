@@ -150,4 +150,55 @@ router.post('/', protectAdmin, upload.single('image'), async (req, res) => {
   }
 })
 
+// POST /api/upload/multiple - Upload up to 20 images in batch
+router.post('/multiple', protectAdmin, upload.array('images', 20), async (req, res) => {
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ success: false, message: 'No image files uploaded' })
+  }
+
+  try {
+    const uploadedImages = []
+
+    for (const file of req.files) {
+      if (isCloudinaryConfigured()) {
+        const result = await streamUploadToCloudinary(file.buffer, file.originalname)
+        uploadedImages.push({
+          url: result.secure_url,
+          public_id: result.public_id,
+          width: result.width,
+          height: result.height,
+        })
+      } else {
+        const uploadDir = path.resolve('uploads')
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true })
+        }
+        const ext = path.extname(file.originalname)
+        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`
+        const filename = `img-${uniqueSuffix}${ext}`
+        fs.writeFileSync(path.join(uploadDir, filename), file.buffer)
+        const serverUrl = `${req.protocol}://${req.get('host')}`
+        uploadedImages.push({
+          url: `${serverUrl}/uploads/${filename}`,
+          filename,
+        })
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `${uploadedImages.length} image(s) uploaded successfully`,
+      images: uploadedImages,
+      urls: uploadedImages.map((img) => img.url),
+    })
+  } catch (error) {
+    console.error('[Multiple Upload Error]:', error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Multiple images upload failed',
+    })
+  }
+})
+
 export default router
+

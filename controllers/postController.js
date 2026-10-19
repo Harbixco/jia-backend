@@ -119,6 +119,7 @@ export const createPost = async (req, res) => {
       content,
       rawContent,
       image,
+      gallery,
       category,
       author,
       date,
@@ -164,6 +165,15 @@ export const createPost = async (req, res) => {
       content: processedContent,
       rawContent: rawContent || '',
       image: image || '',
+      gallery: Array.isArray(gallery)
+        ? gallery
+            .map((item) =>
+              typeof item === 'string'
+                ? { src: item.trim(), caption: '' }
+                : { src: (item.src || item.url || '').trim(), caption: (item.caption || '').trim() }
+            )
+            .filter((item) => item.src.length > 0)
+        : [],
       category: category || 'Article',
       author: author || 'Prophet Oludamola Daramola',
       date: date || new Date().toLocaleDateString('en-US', {
@@ -206,6 +216,7 @@ export const updatePost = async (req, res) => {
       content,
       rawContent,
       image,
+      gallery,
       category,
       author,
       date,
@@ -218,6 +229,17 @@ export const updatePost = async (req, res) => {
     if (title) post.title = title
     if (excerpt !== undefined) post.excerpt = excerpt
     if (image !== undefined) post.image = image
+    if (gallery !== undefined) {
+      post.gallery = Array.isArray(gallery)
+        ? gallery
+            .map((item) =>
+              typeof item === 'string'
+                ? { src: item.trim(), caption: '' }
+                : { src: (item.src || item.url || '').trim(), caption: (item.caption || '').trim() }
+            )
+            .filter((item) => item.src.length > 0)
+        : []
+    }
     if (category) post.category = category
     if (author) post.author = author
     if (date) post.date = date
