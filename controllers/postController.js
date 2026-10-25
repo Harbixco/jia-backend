@@ -313,3 +313,33 @@ export const deletePost = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message })
   }
 }
+
+// @desc Like / Unlike a post
+// @route POST /api/posts/:slugOrId/like
+export const toggleLikePost = async (req, res) => {
+  try {
+    const { slugOrId } = req.params
+    const { action } = req.body // 'like' or 'unlike'
+
+    let post = null
+    if (slugOrId.match(/^[0-9a-fA-F]{24}$/)) {
+      post = await Post.findById(slugOrId)
+    }
+    if (!post) {
+      post = await Post.findOne({ slug: slugOrId })
+    }
+
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Post not found' })
+    }
+
+    const delta = action === 'unlike' ? -1 : 1
+    post.likes = Math.max(0, (post.likes || 0) + delta)
+    await post.save()
+
+    return res.json({ success: true, likes: post.likes })
+  } catch (error) {
+    console.error('[Like Post Error]:', error)
+    return res.status(500).json({ success: false, message: error.message })
+  }
+}

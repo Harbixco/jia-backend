@@ -79,6 +79,10 @@ const postSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    likes: {
+      type: Number,
+      default: 0,
+    },
     content: [contentBlockSchema],
     rawContent: {
       type: String,
