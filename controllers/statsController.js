@@ -7,6 +7,7 @@ export const getAdminStats = async (req, res) => {
   try {
     const totalPosts = await Post.countDocuments()
     const publishedPosts = await Post.countDocuments({ status: 'published' })
+    const scheduledPosts = await Post.countDocuments({ status: 'scheduled' })
     const draftPosts = await Post.countDocuments({ status: 'draft' })
     const totalAdmins = await Admin.countDocuments()
 
@@ -33,6 +34,7 @@ export const getAdminStats = async (req, res) => {
       stats: {
         totalPosts,
         publishedPosts,
+        scheduledPosts,
         draftPosts,
         totalViews,
         totalAdmins,

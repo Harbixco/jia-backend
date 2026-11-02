@@ -32,27 +32,37 @@ export const getPosts = async (req, res) => {
   try {
     const { status, category, search, page = 1, limit = 50 } = req.query
 
-    const query = {}
+    const andConditions = []
 
     // If query specifically requests status or if it's admin request
     if (status && status !== 'all') {
-      query.status = status
+      andConditions.push({ status })
     } else if (!req.query.isAdminView) {
-      // Public default: show only published
-      query.status = 'published'
+      // Public default: show only published or scheduled posts whose scheduled time has passed
+      const now = new Date()
+      andConditions.push({
+        $or: [
+          { status: 'published' },
+          { status: 'scheduled', scheduledAt: { $lte: now } },
+        ],
+      })
     }
 
     if (category && category !== 'All') {
-      query.category = new RegExp(`^${category}$`, 'i')
+      andConditions.push({ category: new RegExp(`^${category}$`, 'i') })
     }
 
     if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { excerpt: { $regex: search, $options: 'i' } },
-        { category: { $regex: search, $options: 'i' } },
-      ]
+      andConditions.push({
+        $or: [
+          { title: { $regex: search, $options: 'i' } },
+          { excerpt: { $regex: search, $options: 'i' } },
+          { category: { $regex: search, $options: 'i' } },
+        ],
+      })
     }
+
+    const query = andConditions.length > 0 ? { $and: andConditions } : {}
 
     const pageNum = parseInt(page, 10) || 1
     const limitNum = parseInt(limit, 10) || 50
@@ -98,6 +108,17 @@ export const getPost = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Post not found' })
     }
 
+    // Public view visibility check
+    if (!req.query.isAdminView) {
+      const now = new Date()
+      const isVisible =
+        post.status === 'published' ||
+        (post.status === 'scheduled' && post.scheduledAt && new Date(post.scheduledAt) <= now)
+      if (!isVisible) {
+        return res.status(404).json({ success: false, message: 'Post not found' })
+      }
+    }
+
     // Increment view count asynchronously
     post.views = (post.views || 0) + 1
     await post.save()
@@ -125,6 +146,7 @@ export const createPost = async (req, res) => {
       date,
       readTime,
       status,
+      scheduledAt,
       featured,
       tags,
     } = req.body
@@ -183,6 +205,7 @@ export const createPost = async (req, res) => {
       }),
       readTime: calculatedRead,
       status: status || 'published',
+      scheduledAt: status === 'scheduled' ? (scheduledAt ? new Date(scheduledAt) : new Date(Date.now() + 86400000)) : null,
       featured: Boolean(featured),
       tags: Array.isArray(tags) ? tags : [],
     })
@@ -222,6 +245,7 @@ export const updatePost = async (req, res) => {
       date,
       readTime,
       status,
+      scheduledAt,
       featured,
       tags,
     } = req.body
@@ -244,6 +268,9 @@ export const updatePost = async (req, res) => {
     if (author) post.author = author
     if (date) post.date = date
     if (status) post.status = status
+    if (scheduledAt !== undefined) {
+      post.scheduledAt = scheduledAt ? new Date(scheduledAt) : null
+    }
     if (featured !== undefined) post.featured = Boolean(featured)
     if (tags !== undefined) post.tags = Array.isArray(tags) ? tags : []
 
